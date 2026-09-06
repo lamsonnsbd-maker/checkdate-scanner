@@ -177,34 +177,43 @@
 
   function onScanSuccess(decodedText) {
 
-    if (scanned) return;
+  if (scanned) return;
 
-    scanned = true;
+  scanned = true;
 
-    const code = String(decodedText || '').trim();
+  const code = String(decodedText || '').trim();
 
-    if (!code) {
+  if (!code) {
+    scanned = false;
+    return;
+  }
 
-      scanned = false;
+  setStatus('Đã quét: ' + code + ' - Đang chuyển về hệ thống...');
 
-      return;
+  // QUAN TRỌNG:
+  // Không chờ camera stop.
+  // Chuyển ngay về Google Apps Script.
 
-    }
+  try {
+
+    const url = new URL(APP_URL);
+
+    url.searchParams.set('barcode', code);
+
+    window.location.href = url.toString();
+
+  } catch (error) {
+
+    console.error(error);
+
+    scanned = false;
 
     setStatus(
-      'Đã quét: ' + code +
-      '\nĐang chuyển về hệ thống...'
+      'Lỗi URL hệ thống. Vui lòng kiểm tra APP_URL.'
     );
 
-
-    // Dừng camera
-
-    if (scanner) {
-
-      scanner.stop()
-        .catch(function() {});
-
-    }
+  }
+}
 
 
     // Chuyển về Google Apps Script
