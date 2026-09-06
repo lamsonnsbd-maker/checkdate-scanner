@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html lang="vi">
+
 <head>
+
   <meta charset="UTF-8">
 
   <meta name="viewport"
@@ -11,9 +13,11 @@
 
   <title>Quét mã hàng</title>
 
+  <!-- HTML5 QR CODE -->
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 
   <style>
+
     * {
       box-sizing: border-box;
     }
@@ -49,6 +53,12 @@
       width: 100%;
       overflow: hidden;
       border-radius: 14px;
+      min-height: 100px;
+    }
+
+    #reader video {
+      width: 100% !important;
+      border-radius: 14px;
     }
 
     .status {
@@ -58,6 +68,17 @@
       border-radius: 10px;
       text-align: center;
       font-size: 15px;
+      line-height: 1.5;
+    }
+
+    .status.success {
+      background: #d1fae5;
+      color: #065f46;
+    }
+
+    .status.error {
+      background: #fee2e2;
+      color: #991b1b;
     }
 
     .manual {
@@ -71,6 +92,11 @@
       border: 1px solid #ccc;
       border-radius: 10px;
       outline: none;
+    }
+
+    input:focus {
+      border-color: #1677ff;
+      box-shadow: 0 0 0 3px rgba(22,119,255,.12);
     }
 
     button {
@@ -93,6 +119,11 @@
       background: #0f5dcc;
     }
 
+    .btn-retry {
+      background: #16a34a;
+      color: white;
+    }
+
     .note {
       margin-top: 15px;
       text-align: center;
@@ -100,7 +131,27 @@
       font-size: 13px;
       line-height: 1.5;
     }
+
+    .camera-help {
+      display: none;
+      margin-top: 12px;
+      padding: 12px;
+      border-radius: 10px;
+      background: #fff7ed;
+      color: #9a3412;
+      font-size: 14px;
+      line-height: 1.5;
+      text-align: center;
+    }
+
+    .loading {
+      padding: 30px 10px;
+      text-align: center;
+      color: #666;
+    }
+
   </style>
+
 </head>
 
 <body>
@@ -113,12 +164,51 @@
 
   <div class="card">
 
-    <div id="reader"></div>
+    <!-- CAMERA -->
+    <div id="reader">
 
+      <div class="loading">
+        📷 Đang khởi động camera...
+      </div>
+
+    </div>
+
+
+    <!-- TRẠNG THÁI -->
     <div class="status" id="status">
       Đang khởi động camera...
     </div>
 
+
+    <!-- HƯỚNG DẪN KHI CAMERA LỖI -->
+    <div class="camera-help" id="cameraHelp">
+
+      <b>Không mở được camera.</b><br><br>
+
+      Vui lòng kiểm tra quyền camera của trình duyệt:<br>
+
+      <b>🔒 → Quyền trang web → Camera → Cho phép</b>
+
+      <br><br>
+
+      Sau đó bấm nút bên dưới để thử lại.
+
+    </div>
+
+
+    <!-- NÚT THỬ LẠI -->
+    <button
+      id="retryButton"
+      class="btn-retry"
+      style="display:none;"
+      onclick="restartScanner()">
+
+      🔄 KHỞI ĐỘNG LẠI CAMERA
+
+    </button>
+
+
+    <!-- NHẬP THỦ CÔNG -->
     <div class="manual">
 
       <input
@@ -132,97 +222,176 @@
       <button
         class="btn"
         onclick="manualSearch()">
-        🔎 Nhập mã hàng
+
+        🔎 NHẬP MÃ HÀNG
+
       </button>
 
     </div>
 
+
     <div class="note">
-      Cho phép trình duyệt sử dụng camera để quét mã EAN-13,
-      EAN-8 hoặc UPC.
+
+      Cho phép trình duyệt sử dụng camera để quét mã
+      <b>EAN-13, EAN-8 hoặc UPC</b>.
+
+      <br>
+
+      Nếu camera không hoạt động, bạn vẫn có thể nhập mã thủ công.
+
     </div>
 
   </div>
 
 </div>
 
+
 <script>
 
   // =========================================================
-  // URL WEB APP GOOGLE APPS SCRIPT
+  // GOOGLE APPS SCRIPT WEB APP
   // =========================================================
 
   const APP_URL =
     'https://script.google.com/macros/s/AKfycbx3vNN2oLHIlUeJ_rGsTlQhPRmX32l8oc6X9nOM7QM83Qz71oZuqOU9Rd-k6slMFIeH/exec';
 
 
+  // =========================================================
+  // BIẾN
+  // =========================================================
+
   let scanner = null;
+
   let scanned = false;
+
+  let scannerRunning = false;
 
 
   // =========================================================
   // HIỂN THỊ TRẠNG THÁI
   // =========================================================
 
-  function setStatus(text) {
+  function setStatus(text, type) {
 
-    document.getElementById('status').textContent = text;
+    const status =
+      document.getElementById('status');
+
+    status.textContent = text;
+
+    status.className = 'status';
+
+    if (type) {
+
+      status.classList.add(type);
+
+    }
 
   }
 
 
   // =========================================================
-  // KHI QUÉT THÀNH CÔNG
+  // CHUYỂN VỀ GOOGLE APPS SCRIPT
+  // =========================================================
+
+  function goToApp(code) {
+
+    code = String(code || '').trim();
+
+    if (!code) {
+
+      setStatus(
+        'Không đọc được mã hàng.',
+        'error'
+      );
+
+      scanned = false;
+
+      return;
+
+    }
+
+
+    setStatus(
+      'Đã quét: ' + code +
+      ' - Đang chuyển về hệ thống...',
+      'success'
+    );
+
+
+    try {
+
+      const url =
+        new URL(APP_URL);
+
+      url.searchParams.set(
+        'barcode',
+        code
+      );
+
+
+      console.log(
+        'Chuyển tới:',
+        url.toString()
+      );
+
+
+      // Chuyển ngay
+      window.location.replace(
+        url.toString()
+      );
+
+    }
+
+    catch (error) {
+
+      console.error(error);
+
+      scanned = false;
+
+      setStatus(
+        'Lỗi URL hệ thống. Vui lòng kiểm tra APP_URL.',
+        'error'
+      );
+
+    }
+
+  }
+
+
+  // =========================================================
+  // QUÉT THÀNH CÔNG
   // =========================================================
 
   function onScanSuccess(decodedText) {
 
-  if (scanned) return;
+    if (scanned) {
 
-  scanned = true;
+      return;
 
-  const code = String(decodedText || '').trim();
+    }
 
-  if (!code) {
-    scanned = false;
-    return;
-  }
 
-  setStatus('Đã quét: ' + code + ' - Đang chuyển về hệ thống...');
+    const code =
+      String(decodedText || '').trim();
 
-  // QUAN TRỌNG:
-  // Không chờ camera stop.
-  // Chuyển ngay về Google Apps Script.
 
-  try {
+    if (!code) {
 
-    const url = new URL(APP_URL);
+      return;
 
-    url.searchParams.set('barcode', code);
+    }
 
-    window.location.href = url.toString();
 
-  } catch (error) {
+    scanned = true;
 
-    console.error(error);
 
-    scanned = false;
-
-    setStatus(
-      'Lỗi URL hệ thống. Vui lòng kiểm tra APP_URL.'
+    console.log(
+      'Đã quét mã:',
+      code
     );
 
-  }
-}
 
-
-    // Chuyển về Google Apps Script
-
-    const url = new URL(APP_URL);
-
-    url.searchParams.set('barcode', code);
-
-    window.location.replace(url.toString());
+    goToApp(code);
 
   }
 
@@ -233,8 +402,39 @@
 
   function onScanFailure(error) {
 
-    // Không cần hiển thị liên tục
-    // vì thư viện gọi hàm này rất nhiều lần.
+    // Không hiển thị lỗi liên tục.
+    // html5-qrcode gọi hàm này liên tục
+    // khi chưa nhận diện được mã.
+
+  }
+
+
+  // =========================================================
+  // HIỂN THỊ LỖI CAMERA
+  // =========================================================
+
+  function showCameraError(error) {
+
+    console.error(
+      'Camera error:',
+      error
+    );
+
+
+    setStatus(
+      'Không thể mở camera.',
+      'error'
+    );
+
+
+    document
+      .getElementById('cameraHelp')
+      .style.display = 'block';
+
+
+    document
+      .getElementById('retryButton')
+      .style.display = 'block';
 
   }
 
@@ -243,63 +443,292 @@
   // KHỞI ĐỘNG CAMERA
   // =========================================================
 
-  function startScanner() {
+  async function startScanner() {
 
-    scanner = new Html5Qrcode('reader');
+    try {
+
+      scanned = false;
 
 
-    scanner.start(
+      document
+        .getElementById('cameraHelp')
+        .style.display = 'none';
 
-      {
-        facingMode: {
-          exact: "environment"
+
+      document
+        .getElementById('retryButton')
+        .style.display = 'none';
+
+
+      setStatus(
+        'Đang xin quyền sử dụng camera...'
+      );
+
+
+      // -----------------------------------------------------
+      // KIỂM TRA HTML5-QRCODE
+      // -----------------------------------------------------
+
+      if (
+        typeof Html5Qrcode ===
+        'undefined'
+      ) {
+
+        throw new Error(
+          'Không tải được thư viện quét mã.'
+        );
+
+      }
+
+
+      // -----------------------------------------------------
+      // TẠO SCANNER
+      // -----------------------------------------------------
+
+      if (!scanner) {
+
+        scanner =
+          new Html5Qrcode(
+            'reader'
+          );
+
+      }
+
+
+      // -----------------------------------------------------
+      // LẤY CAMERA
+      // -----------------------------------------------------
+
+      let cameras = [];
+
+
+      try {
+
+        cameras =
+          await Html5Qrcode.getCameras();
+
+      }
+
+      catch (cameraError) {
+
+        console.error(
+          'Không lấy được danh sách camera:',
+          cameraError
+        );
+
+      }
+
+
+      let cameraConfig;
+
+
+      // Nếu tìm thấy camera
+      if (
+        cameras &&
+        cameras.length > 0
+      ) {
+
+        console.log(
+          'Danh sách camera:',
+          cameras
+        );
+
+
+        // Ưu tiên camera sau
+        let backCamera =
+          cameras.find(function(camera) {
+
+            const label =
+              String(
+                camera.label || ''
+              ).toLowerCase();
+
+
+            return (
+              label.includes('back') ||
+              label.includes('rear') ||
+              label.includes('environment') ||
+              label.includes('sau') ||
+              label.includes('sau lưng')
+            );
+
+          });
+
+
+        if (backCamera) {
+
+          cameraConfig =
+            backCamera.id;
+
         }
-      },
 
-      {
+        else {
+
+          cameraConfig =
+            cameras[0].id;
+
+        }
+
+      }
+
+      else {
+
+        // Fallback
+        cameraConfig = {
+          facingMode: 'environment'
+        };
+
+      }
+
+
+      // -----------------------------------------------------
+      // CẤU HÌNH QUÉT
+      // -----------------------------------------------------
+
+      const config = {
+
         fps: 10,
 
-        qrbox: function(viewfinderWidth, viewfinderHeight) {
+        qrbox: function(
+          viewfinderWidth,
+          viewfinderHeight
+        ) {
 
           const size =
-            Math.min(
-              viewfinderWidth,
-              viewfinderHeight
-            ) * 0.75;
+            Math.floor(
+              Math.min(
+                viewfinderWidth,
+                viewfinderHeight
+              ) * 0.75
+            );
+
 
           return {
+
             width: size,
+
             height: size
+
           };
 
         },
 
-        aspectRatio: 1.777778
+        aspectRatio: 1.777778,
 
-      },
+        formatsToSupport: [
 
-      onScanSuccess,
+          Html5QrcodeSupportedFormats.EAN_13,
 
-      onScanFailure
+          Html5QrcodeSupportedFormats.EAN_8,
 
-    )
-    .then(function() {
+          Html5QrcodeSupportedFormats.UPC_A,
 
-      setStatus(
-        'Đưa mã vạch vào khung để quét.'
+          Html5QrcodeSupportedFormats.UPC_E
+
+        ]
+
+      };
+
+
+      // -----------------------------------------------------
+      // START CAMERA
+      // -----------------------------------------------------
+
+      await scanner.start(
+
+        cameraConfig,
+
+        config,
+
+        onScanSuccess,
+
+        onScanFailure
+
       );
 
-    })
-    .catch(function(error) {
 
-      console.error(error);
+      scannerRunning = true;
+
 
       setStatus(
-        'Không thể mở camera. ' +
-        'Hãy cho phép trình duyệt sử dụng camera.'
+        '📷 Đưa mã vạch vào khung để quét.'
       );
 
-    });
+
+      console.log(
+        'Camera đã khởi động.'
+      );
+
+    }
+
+    catch (error) {
+
+      scannerRunning = false;
+
+      showCameraError(error);
+
+    }
+
+  }
+
+
+  // =========================================================
+  // DỪNG CAMERA
+  // =========================================================
+
+  async function stopScanner() {
+
+    try {
+
+      if (
+        scanner &&
+        scannerRunning
+      ) {
+
+        await scanner.stop();
+
+        scannerRunning = false;
+
+      }
+
+    }
+
+    catch (error) {
+
+      console.warn(
+        'Không thể stop scanner:',
+        error
+      );
+
+      scannerRunning = false;
+
+    }
+
+  }
+
+
+  // =========================================================
+  // KHỞI ĐỘNG LẠI CAMERA
+  // =========================================================
+
+  async function restartScanner() {
+
+    scanned = false;
+
+
+    await stopScanner();
+
+
+    document
+      .getElementById('reader')
+      .innerHTML = '';
+
+
+    // Tạo lại scanner
+    scanner = null;
+
+
+    startScanner();
 
   }
 
@@ -311,7 +740,10 @@
   function manualSearch() {
 
     const input =
-      document.getElementById('manualBarcode');
+      document.getElementById(
+        'manualBarcode'
+      );
+
 
     const code =
       input.value.trim();
@@ -319,7 +751,9 @@
 
     if (!code) {
 
-      alert('Vui lòng nhập mã hàng.');
+      alert(
+        'Vui lòng nhập mã hàng.'
+      );
 
       input.focus();
 
@@ -328,11 +762,7 @@
     }
 
 
-    const url = new URL(APP_URL);
-
-    url.searchParams.set('barcode', code);
-
-    window.location.replace(url.toString());
+    goToApp(code);
 
   }
 
@@ -342,25 +772,49 @@
   // =========================================================
 
   document
-    .getElementById('manualBarcode')
-    .addEventListener('keydown', function(e) {
+    .getElementById(
+      'manualBarcode'
+    )
+    .addEventListener(
+      'keydown',
+      function(e) {
 
-      if (e.key === 'Enter') {
+        if (
+          e.key === 'Enter'
+        ) {
 
-        manualSearch();
+          manualSearch();
+
+        }
 
       }
-
-    });
+    );
 
 
   // =========================================================
-  // CHẠY
+  // CHẠY KHI TRANG LOAD
   // =========================================================
 
   window.addEventListener(
     'load',
-    startScanner
+    function() {
+
+      console.log(
+        'Trang scanner đã load.'
+      );
+
+
+      // Chờ thư viện tải hoàn tất
+      setTimeout(
+        function() {
+
+          startScanner();
+
+        },
+        500
+      );
+
+    }
   );
 
 </script>
