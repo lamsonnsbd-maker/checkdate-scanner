@@ -1,1 +1,360 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
 
+  <meta name="viewport"
+        content="width=device-width,
+                 initial-scale=1.0,
+                 maximum-scale=1.0,
+                 user-scalable=no">
+
+  <title>Quét mã hàng</title>
+
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f4f6f8;
+      color: #222;
+    }
+
+    .container {
+      max-width: 600px;
+      margin: auto;
+      padding: 16px;
+    }
+
+    .title {
+      text-align: center;
+      font-size: 24px;
+      font-weight: bold;
+      margin: 10px 0 20px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 16px;
+      padding: 18px;
+      box-shadow: 0 4px 15px rgba(0,0,0,.08);
+    }
+
+    #reader {
+      width: 100%;
+      overflow: hidden;
+      border-radius: 14px;
+    }
+
+    .status {
+      margin-top: 15px;
+      padding: 12px;
+      background: #f1f3f5;
+      border-radius: 10px;
+      text-align: center;
+      font-size: 15px;
+    }
+
+    .manual {
+      margin-top: 18px;
+    }
+
+    input {
+      width: 100%;
+      padding: 14px;
+      font-size: 18px;
+      border: 1px solid #ccc;
+      border-radius: 10px;
+      outline: none;
+    }
+
+    button {
+      width: 100%;
+      margin-top: 12px;
+      padding: 14px;
+      border: none;
+      border-radius: 10px;
+      font-size: 17px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    .btn {
+      background: #1677ff;
+      color: white;
+    }
+
+    .btn:hover {
+      background: #0f5dcc;
+    }
+
+    .note {
+      margin-top: 15px;
+      text-align: center;
+      color: #666;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="container">
+
+  <div class="title">
+    📷 QUÉT MÃ HÀNG
+  </div>
+
+  <div class="card">
+
+    <div id="reader"></div>
+
+    <div class="status" id="status">
+      Đang khởi động camera...
+    </div>
+
+    <div class="manual">
+
+      <input
+        type="text"
+        id="manualBarcode"
+        placeholder="Hoặc nhập mã hàng..."
+        autocomplete="off"
+        inputmode="numeric"
+      >
+
+      <button
+        class="btn"
+        onclick="manualSearch()">
+        🔎 Nhập mã hàng
+      </button>
+
+    </div>
+
+    <div class="note">
+      Cho phép trình duyệt sử dụng camera để quét mã EAN-13,
+      EAN-8 hoặc UPC.
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+
+  // =========================================================
+  // URL WEB APP GOOGLE APPS SCRIPT
+  // =========================================================
+
+  const APP_URL =
+    'DÁN_URL_WEB_APP_APPS_SCRIPT_CỦA_BẠN_VÀO_ĐÂY';
+
+
+  let scanner = null;
+  let scanned = false;
+
+
+  // =========================================================
+  // HIỂN THỊ TRẠNG THÁI
+  // =========================================================
+
+  function setStatus(text) {
+
+    document.getElementById('status').textContent = text;
+
+  }
+
+
+  // =========================================================
+  // KHI QUÉT THÀNH CÔNG
+  // =========================================================
+
+  function onScanSuccess(decodedText) {
+
+    if (scanned) return;
+
+    scanned = true;
+
+    const code = String(decodedText || '').trim();
+
+    if (!code) {
+
+      scanned = false;
+
+      return;
+
+    }
+
+    setStatus(
+      'Đã quét: ' + code +
+      '\nĐang chuyển về hệ thống...'
+    );
+
+
+    // Dừng camera
+
+    if (scanner) {
+
+      scanner.stop()
+        .catch(function() {});
+
+    }
+
+
+    // Chuyển về Google Apps Script
+
+    const url = new URL(APP_URL);
+
+    url.searchParams.set('barcode', code);
+
+    window.location.replace(url.toString());
+
+  }
+
+
+  // =========================================================
+  // LỖI QUÉT
+  // =========================================================
+
+  function onScanFailure(error) {
+
+    // Không cần hiển thị liên tục
+    // vì thư viện gọi hàm này rất nhiều lần.
+
+  }
+
+
+  // =========================================================
+  // KHỞI ĐỘNG CAMERA
+  // =========================================================
+
+  function startScanner() {
+
+    scanner = new Html5Qrcode('reader');
+
+
+    scanner.start(
+
+      {
+        facingMode: {
+          exact: "environment"
+        }
+      },
+
+      {
+        fps: 10,
+
+        qrbox: function(viewfinderWidth, viewfinderHeight) {
+
+          const size =
+            Math.min(
+              viewfinderWidth,
+              viewfinderHeight
+            ) * 0.75;
+
+          return {
+            width: size,
+            height: size
+          };
+
+        },
+
+        aspectRatio: 1.777778
+
+      },
+
+      onScanSuccess,
+
+      onScanFailure
+
+    )
+    .then(function() {
+
+      setStatus(
+        'Đưa mã vạch vào khung để quét.'
+      );
+
+    })
+    .catch(function(error) {
+
+      console.error(error);
+
+      setStatus(
+        'Không thể mở camera. ' +
+        'Hãy cho phép trình duyệt sử dụng camera.'
+      );
+
+    });
+
+  }
+
+
+  // =========================================================
+  // NHẬP MÃ THỦ CÔNG
+  // =========================================================
+
+  function manualSearch() {
+
+    const input =
+      document.getElementById('manualBarcode');
+
+    const code =
+      input.value.trim();
+
+
+    if (!code) {
+
+      alert('Vui lòng nhập mã hàng.');
+
+      input.focus();
+
+      return;
+
+    }
+
+
+    const url = new URL(APP_URL);
+
+    url.searchParams.set('barcode', code);
+
+    window.location.replace(url.toString());
+
+  }
+
+
+  // =========================================================
+  // ENTER
+  // =========================================================
+
+  document
+    .getElementById('manualBarcode')
+    .addEventListener('keydown', function(e) {
+
+      if (e.key === 'Enter') {
+
+        manualSearch();
+
+      }
+
+    });
+
+
+  // =========================================================
+  // CHẠY
+  // =========================================================
+
+  window.addEventListener(
+    'load',
+    startScanner
+  );
+
+</script>
+
+</body>
+</html>
